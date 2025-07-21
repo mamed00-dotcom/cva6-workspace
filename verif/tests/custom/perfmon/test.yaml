@@ -1,0 +1,37 @@
+# verif/tests/custom/perfmon/test.yaml
+# ------------------------------------------------------------
+# One YAML file may hold many tests; here we keep just one.
+
+- test: perfmon_int_instr               # Appears in logs/report
+  description: >
+    Count retired integer instructions with mhpmcounter3
+    (event-ID 20) and check mcycle/minstret on CV32A60X.
+
+  # -----------------------------------------------------------------
+  # Where the C source lives ‒ path is *relative to verif/sim*
+  path: ../tests/custom/perfmon/perfmon.c
+
+  # Compile / run exactly once (bump for stress regressions)
+  iterations: 1
+
+  # ISA & privilege inherited from the target, but you can pin them:
+  isa:  rv32imc
+  priv: msu
+
+  # -----------------------------------------------------------------
+  # Extra compiler flags ‒ must be ONE YAML “block scalar”
+  gcc_opts: >
+    -static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -g
+    ../tests/custom/common/syscalls.c
+    ../tests/custom/common/crt.S
+    -lgcc
+    -I../tests/custom/env
+    -I../tests/custom/common
+
+  # Echo every UART byte so the PASS/FAIL lines show in the .log.iss file
+  issrun_opts: "+echo_uart=1"
+
+  # Leave blank unless you want custom compare, sim, or seed options
+  # cmp_opts: ""
+  # sim_opts: ""
+
