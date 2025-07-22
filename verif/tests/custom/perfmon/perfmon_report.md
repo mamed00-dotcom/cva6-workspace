@@ -1,6 +1,12 @@
 # PerfMon RISC‑V Performance Monitoring Report
 
-This document summarizes the **perfmon.c** harness, its observed outputs when measuring various events, and a step‑by‑step explanation of how each result arises.
+This document summarizes the **perfmon.c** harness, its observed outputs when measuring various events, and a step‑by‑step explanation on how we got the results. please check `cva6_perfmon_exec` on /cva6 to run the simulation.
+
+Run the following command to get the .s file : 
+
+```bash 
+riscv-none-elf-gcc -O0 -S perfmon.c -o perfmon.s
+```
 
 ---
 
