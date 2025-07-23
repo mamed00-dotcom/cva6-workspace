@@ -224,9 +224,9 @@ When you zero MHPMCOUNTER3:
 ```asm
 la   t3, load_data   # AUIPC+ADDI (no stall)
 lw   t0, 0(t3)       # load 1
-addi t1, t0, 1       # needs t0 → stalls S0 cycles
+addi t1, t0, 1       # needs t0 -> stalls S0 cycles
 lw   t2, 4(t3)       # load 2
-addi t3, t2, 1       # needs t2 → stalls S1 cycles
+addi t3, t2, 1       # needs t2 -> stalls S1 cycles
 
 ```
 
@@ -330,4 +330,100 @@ addi sp, sp, -64
 ```asm
 addi x0, x0, 0
 ```
+
+
+# CV32A60X – Pipeline‑Stall Counter (HPM3, event 22)
+
+This part compares **three ways** of instrumenting the same `wl_stall()` kernel and shows how the placement of the CSR instructions that start/stop the event selector changes what gets counted.
+
+---
+
+## Scenario 1 — Global Counting (18 cycles)
+
+``** as built by the compiler (no extra CSRs)**
+
+```c
+static void wl_stall(void) {
+    asm volatile(
+        "la   t3, load_data\n\t"
+        "lw   t0, 0(t3)\n\t"
+        "addi t1, t0, 1\n\t"
+        "lw   t2, 4(t3)\n\t"
+        "addi t3, t2, 1"
+        ::: "t0","t1","t2","t3"
+    );
+}
+```
+
+*Counting window*: everything from the call into `wl_stall()` until the return, including frontend flushes and prologue/epilogue.\
+*Measured result*: **HPM3 = 18** cycles.
+
+---
+
+## Scenario 2 — Local Start/Stop Inside the Kernel (9 cycles)
+
+``** with explicit stop / reset / start / stop**
+
+```c
+static void __attribute__((naked)) wl_stall(void)
+{
+    asm volatile(
+        "csrw 0x323, x0\n\t"        /* stop event 22          */
+        "csrw 0xB03,  x0\n\t"        /* reset counter          */
+
+        "la   t3, load_data\n\t"      /* pointer setup          */
+
+        "li   t0, 22\n\t"
+        "csrw 0x323, t0\n\t"         /* start event 22         */
+
+        /* --- kernel under test --- */
+        "lw   t0, 0(t3)\n\t"
+        "addi t1, t0, 1\n\t"          /* load->use #1            */
+        "lw   t2, 4(t3)\n\t"
+        "addi t3, t2, 1\n\t"          /* load->use #2            */
+        /* ------------------------ */
+
+        "csrw 0x323, x0\n\t"         /* stop before return     */
+        "ret\n\t"
+        ::: "t0","t1","t2","t3"
+    );
+}
+```
+
+Counting window : Begins after the csrw 0x323,t0 retires (counter active) and ends before the final csrw 0x323,x0. Therefore, it captures only the two load->use stalls; the CSR pipeline flush itself and the subsequent ret flush are outside the window.
+
+
+
+---
+
+## Scenario 3 — Event Disabled for Sanity Check (0 cycles)
+
+``** with the start lines commented out**
+
+```c
+static void __attribute__((naked)) wl_stall(void)
+{
+    asm volatile(
+        "csrw 0x323, x0\n\t"        /* selector cleared */
+        "csrw 0xB03,  x0\n\t"        /* counter reset   */
+
+        "la   t3, load_data\n\t"
+
+        /* selector never re‑enabled */
+        "lw   t0, 0(t3)\n\t"
+        "addi t1, t0, 1\n\t"
+        "lw   t2, 4(t3)\n\t"
+        "addi t3, t2, 1\n\t"
+
+        "ret\n\t"
+        ::: "t0","t1","t2","t3"
+    );
+}
+```
+
+Because the selector remains at 0, the counter never increments, so **HPM3 = 0** cycles.
+
+
+
+*Revision 22 Jul 2025*
 
